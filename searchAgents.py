@@ -269,7 +269,6 @@ def euclideanHeuristic(position, problem, info={}):
 class CornersProblem(search.SearchProblem):
     """
     This search problem finds paths through all four corners of a layout.
-
     You must select a suitable state space and successor function
     """
 
@@ -277,56 +276,94 @@ class CornersProblem(search.SearchProblem):
         """
         Stores the walls, pacman's starting position and corners.
         """
+
+        # No change in code
+
         self.walls = startingGameState.getWalls()
         self.startingPosition = startingGameState.getPacmanPosition()
         top, right = self.walls.height-2, self.walls.width-2
-        self.corners = ((1,1), (1,top), (right, 1), (right, top))
+        self.corners = [(1,1), (1,top), (right, 1), (right, top)]
         for corner in self.corners:
             if not startingGameState.hasFood(*corner):
                 print('Warning: no food in corner ' + str(corner))
         self._expanded = 0 # DO NOT CHANGE; Number of search nodes expanded
-        # Please add any code here which you would like to use
-        # in initializing the problem
-        "*** YOUR CODE HERE ***"
+        self.visualize = True
+        self._visited, self._visitedlist = {}, []
 
     def getStartState(self):
         """
         Returns the start state (in your state space, not the full Pacman state
         space)
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # state là list: (coordinates, list of corners that have not been visited)
+        return (self.startingPosition, self.corners)
 
     def isGoalState(self, state):
         """
         Returns whether this search state is a goal state of the problem.
         """
-        "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # kiểm tra trong stage[1] còn góc nào chưa thăm không
+        isGoal = (state[1] == [])
+
+        # For display purposes only
+        if isGoal and self.visualize:
+            self._visitedlist.append(state[0])
+            import __main__
+            if '_display' in dir(__main__):
+                if 'drawExpandedCells' in dir(__main__._display):  # @UndefinedVariable
+                    __main__._display.drawExpandedCells(self._visitedlist)  # @UndefinedVariable
+
+        return isGoal
 
     def getSuccessors(self, state):
         """
         Returns successor states, the actions they require, and a cost of 1.
-
          As noted in search.py:
             For a given state, this should return a list of triples, (successor,
             action, stepCost), where 'successor' is a successor to the current
             state, 'action' is the action required to get there, and 'stepCost'
             is the incremental cost of expanding to that successor
         """
+        # Add a successor state to the successor list if the action is legal
+        # Here's a code snippet for figuring out whether a new position hits a wall:
+        #   x,y = currentPosition
+        #   dx, dy = Actions.directionToVector(action)
+        #   nextx, nexty = int(x + dx), int(y + dy)
+        #   hitsWall = self.walls[nextx][nexty]
 
+        # Initialise list of successors
         successors = []
+        # lặp lại với tất cả các hướng
         for action in [Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST]:
-            # Add a successor state to the successor list if the action is legal
-            # Here's a code snippet for figuring out whether a new position hits a wall:
-            #   x,y = currentPosition
-            #   dx, dy = Actions.directionToVector(action)
-            #   nextx, nexty = int(x + dx), int(y + dy)
-            #   hitsWall = self.walls[nextx][nexty]
+            # lấy x,y từ tọa độ
+            x, y = state[0]
 
-            "*** YOUR CODE HERE ***"
+            # tìm tọa độ stage tiếp theo
+            dx, dy = Actions.directionToVector(action)
+            nextx, nexty = int(x + dx), int(y + dy)
+
+            # nếu stage này không phải là tường
+            if not self.walls[nextx][nexty]:
+                next_pos = (nextx, nexty)
+                # nếu stage tiếp theo là góc
+                if next_pos in state[1]:
+                    # copy danh sách các góc chưa thăm
+                    next_corners = state[1][:]
+                    # xóa stage này khỏi các góc chưa thăm
+                    next_corners.remove(next_pos)
+                    # append stage ((position, list of corners), action, 1)
+                    successors.append(((next_pos, next_corners), action, 1))
+                # nếu vị trí này k phải là góc
+                else:
+                    # append
+                    successors.append(((next_pos, state[1]), action, 1))
 
         self._expanded += 1 # DO NOT CHANGE
+
+        # display purposes
+        if state[0] not in self._visited:
+            self._visited[state[0]] = True
+            self._visitedlist.append(state[0])
         return successors
 
     def getCostOfActions(self, actions):
@@ -334,14 +371,20 @@ class CornersProblem(search.SearchProblem):
         Returns the cost of a particular sequence of actions.  If those actions
         include an illegal move, return 999999.  This is implemented for you.
         """
+
+        # same code
         if actions == None: return 999999
         x,y= self.startingPosition
         for action in actions:
             dx, dy = Actions.directionToVector(action)
             x, y = int(x + dx), int(y + dy)
             if self.walls[x][y]: return 999999
+
+        # return number of actions, i.e. each action has a cost of 1
         return len(actions)
 
+euclidean = lambda x1, y1, x2, y2: (((x1 - x2) ** 2) + ((y1 - y2) ** 2)) ** 0.5
+manhattan = lambda x1, y1, x2, y2: abs(x1 - x2) + abs(y1 - y2)
 
 def cornersHeuristic(state, problem):
     """
@@ -356,11 +399,31 @@ def cornersHeuristic(state, problem):
     shortest path from the state to a goal of the problem; i.e.  it should be
     admissible (as well as consistent).
     """
-    corners = problem.corners # These are the corner coordinates
-    walls = problem.walls # These are the walls of the maze, as a Grid (game.py)
+    corners = state[1][:]  # list các góc
+    walls = problem.walls  # mảng các tường
 
-    "*** YOUR CODE HERE ***"
-    return 0 # Default to trivial solution
+    h = 0
+    reference = state[0]  # set the reference point to the current position
+
+    # lặp lại khi vẫn còn góc chưa đi
+    while corners != []:
+        # lấy tọa độ từ reference
+        x2, y2 = reference
+
+        # khởi tạo mảng chứa khoảng cách
+        distances = []
+
+        # duyệt tất cả các góc còn lại
+        for x1, y1 in corners:
+            # tìm khoảng cách từ reference đến góc
+            distances.append(manhattan(x1, y1, x2, y2))
+        h += min(distances)
+        # đặt reference gần nhất với reference hiện tại
+        reference = corners[distances.index(min(distances))]
+        corners.remove(reference)
+
+    # trả về h
+    return h
 
 class AStarCornersAgent(SearchAgent):
     "A SearchAgent for FoodSearchProblem using A* and your foodHeuristic"
